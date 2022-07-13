@@ -9,7 +9,7 @@ import (
 type BfRunner struct {
 	data   []DataItem
 	output io.Writer
-	input  io.Reader
+	input  InputReader
 
 	cmdPtr  int
 	dataPtr int
@@ -17,17 +17,27 @@ type BfRunner struct {
 
 type DataItem int
 
-// type Error string
-//
-// func (e Error) Error() string {
-// 	return string(e)
-// }
-//
-// const ErrInterrupted = Error("interrupted")
+type InputReader interface {
+	Read(string) (rune, error)
+	Close() error
+}
 
-const DefaultDataSize = 4096
+const (
+	DefaultDataSize = 4096
+)
 
-func New(dataSize int, w io.Writer, r io.Reader) *BfRunner {
+const (
+	CmdShiftRight = '>'
+	CmdShiftLeft  = '<'
+	CmdPlus       = '+'
+	CmdMinus      = '-'
+	CmdOut        = '.'
+	CmdIn         = ','
+	CmdStartLoop  = '['
+	CmdEndLoop    = ']'
+)
+
+func New(dataSize int, w io.Writer, r InputReader) *BfRunner {
 
 	if dataSize == 0 {
 		dataSize = DefaultDataSize
@@ -76,7 +86,7 @@ func validate(commands string) error {
 
 	for iCmd, cmd := range commands {
 		switch cmd {
-		case '>', '<', '+', '-', '.', ',', '[', ']':
+		case CmdShiftRight, CmdShiftLeft, CmdPlus, CmdMinus, CmdOut, CmdIn, CmdStartLoop, CmdEndLoop:
 
 		default:
 			return fmt.Errorf(`unknown cmd [%d]: '%c'`, iCmd, cmd)
@@ -89,41 +99,41 @@ func validate(commands string) error {
 func (r *BfRunner) processCmd(cmd byte) error {
 
 	switch cmd {
-	case '>':
+	case CmdShiftRight:
 		if r.dataPtr >= len(r.data)-1 {
 			return fmt.Errorf("shift+ out of boundary")
 		}
 		r.dataPtr++
 
-	case '<':
+	case CmdShiftLeft:
 		if r.dataPtr <= 0 {
 			return fmt.Errorf("shift- out of boundary")
 		}
 		r.dataPtr--
 
-	case '+':
+	case CmdPlus:
 		r.data[r.dataPtr] += 1
 
-	case '-':
+	case CmdMinus:
 		r.data[r.dataPtr] -= 1
 
-	case '.':
+	case CmdOut:
 		v := r.data[r.dataPtr]
-		if _, err := r.output.Write([]byte(fmt.Sprintf("%d", v))); err != nil {
+		if _, err := r.output.Write([]byte(fmt.Sprintf("%d\r\n", v))); err != nil {
 			return fmt.Errorf("failed to print value: %w", err)
 		}
 
-	case ',':
-		b := make([]byte, 3)
-		if _, err := r.input.Read(b); err != nil {
+	case CmdIn:
+		rn, err := r.input.Read(fmt.Sprintf("enter value [#cmd: %d]", r.cmdPtr))
+		if err != nil {
 			return fmt.Errorf("failed to read value: %w", err)
 		}
 
-		// TODO: unicode char to unm value
+		r.data[r.dataPtr] = DataItem(rn)
 
-	case '[':
+	case CmdStartLoop:
 
-	case ']':
+	case CmdEndLoop:
 
 	default:
 		return fmt.Errorf(`unknown cmd: '%c'`, cmd)
