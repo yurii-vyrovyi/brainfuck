@@ -16,7 +16,7 @@ type BfRunner struct {
 	cmdPtr    int
 	dataPtr   int
 	commands  string
-	loopStack stack.Stack
+	loopStack stack.Stack[Loop]
 }
 
 type DataItem int
@@ -61,9 +61,9 @@ func New(dataSize int, w io.Writer, r InputReader) *BfRunner {
 
 func (r *BfRunner) Run(ctx context.Context, commands string) ([]DataItem, error) {
 
-	if err := validate(commands); err != nil {
-		return nil, fmt.Errorf("bad commands: %w", err)
-	}
+	// if err := validate(commands); err != nil {
+	// 	return nil, fmt.Errorf("bad commands: %w", err)
+	// }
 
 	r.cmdPtr = 0
 	r.dataPtr = 0
@@ -160,11 +160,7 @@ func (r *BfRunner) processCmd(iCmd int) error {
 	case CmdStartLoop:
 
 		// what's on top of the stack?
-		lv := r.loopStack.Get()
-		loop, ok := lv.(*Loop)
-		if lv != nil && !ok {
-			return fmt.Errorf("failed to cast stack value to loop [#cmd: %d]", r.cmdPtr)
-		}
+		loop := r.loopStack.Get()
 
 		// is it a new loop?
 		if loop == nil || loop.start != r.cmdPtr {
@@ -178,7 +174,7 @@ func (r *BfRunner) processCmd(iCmd int) error {
 				end:   loopEnd,
 			}
 
-			r.loopStack.Push(loop)
+			r.loopStack.Push(*loop)
 		}
 
 		// should we exit this loop already?
@@ -188,20 +184,13 @@ func (r *BfRunner) processCmd(iCmd int) error {
 		}
 
 	case CmdEndLoop:
-		lv := r.loopStack.Get()
-		loop, ok := lv.(*Loop)
-		if lv != nil && !ok {
-			return fmt.Errorf("failed to cast stack value to loop [#cmd: %d]", r.cmdPtr)
-		}
+		loop := r.loopStack.Get()
 
 		if loop == nil {
 			return fmt.Errorf("stack is empty on closing loop [#cmd: %d]", r.cmdPtr)
 		}
 
 		r.cmdPtr = loop.start - 1 // r.cmdPtr will be incremented at the end of func
-
-	default:
-		return fmt.Errorf(`unknown cmd: '%c'`, cmd)
 	}
 
 	r.cmdPtr++
