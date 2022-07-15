@@ -1,28 +1,33 @@
 package bf_runner
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"github.com/yurii-vyrovyi/brainfuck/stack"
 	"io"
+
+	"github.com/yurii-vyrovyi/brainfuck/stack"
+
+	"golang.org/x/exp/constraints"
 )
 
-type BfRunner struct {
-	data   []DataItem
-	output io.Writer
-	input  InputReader
+type BfInterpeter[DataType constraints.Signed] struct {
+	data     []DataType
+	commands io.Reader
+	output   io.Writer
+	input    InputReader
 
 	cmdPtr    int
 	dataPtr   int
-	commands  string
-	loopStack stack.Stack[Loop]
+	loopStack stack.Stack[int]
+	cmdCache  CmdCache
+
+	currentLoopEnd int
 }
 
-type DataItem int
+type CmdCache map[int]byte
 
 type InputReader interface {
-	Read(string) (rune, error)
+	Read(string) (byte, error)
 	Close() error
 }
 
@@ -36,185 +41,148 @@ const (
 )
 
 const (
-	CmdShiftRight = '>'
-	CmdShiftLeft  = '<'
-	CmdPlus       = '+'
-	CmdMinus      = '-'
-	CmdOut        = '.'
-	CmdIn         = ','
-	CmdStartLoop  = '['
-	CmdEndLoop    = ']'
+	CmdShiftRight = byte('>')
+	CmdShiftLeft  = byte('<')
+	CmdPlus       = byte('+')
+	CmdMinus      = byte('-')
+	CmdOut        = byte('.')
+	CmdIn         = byte(',')
+	CmdStartLoop  = byte('[')
+	CmdEndLoop    = byte(']')
 )
 
-func New(dataSize int, w io.Writer, r InputReader) *BfRunner {
+func New[DataType constraints.Signed](
+	dataSize int,
+	commands io.Reader,
+	output io.Writer,
+	input InputReader,
+) *BfInterpeter[DataType] {
 
 	if dataSize == 0 {
 		dataSize = DefaultDataSize
 	}
 
-	return &BfRunner{
-		data:   make([]DataItem, dataSize),
-		output: w,
-		input:  r,
+	return &BfInterpeter[DataType]{
+		data:     make([]DataType, dataSize),
+		commands: commands,
+		output:   output,
+		input:    input,
 	}
 }
 
-func (r *BfRunner) Run(ctx context.Context, commands string) ([]DataItem, error) {
+func (bf *BfInterpeter[DataType]) Run() ([]DataType, error) {
 
-	// if err := validate(commands); err != nil {
-	// 	return nil, fmt.Errorf("bad commands: %w", err)
-	// }
+	bf.cmdPtr = 0
+	bf.dataPtr = 0
 
-	r.cmdPtr = 0
-	r.dataPtr = 0
-	r.commands = commands
-
-	// DEBUG
-	fmt.Println()
-	defer fmt.Println()
+	cmdBuffer := make([]byte, 1)
 
 	for {
-		if r.cmdPtr >= len(commands) {
-			return r.data, nil
+
+		var cmd byte
+		var ok bool
+
+		if bf.cmdCache != nil {
+			cmd, ok = bf.cmdCache[bf.cmdPtr]
 		}
 
-		select {
-		case <-ctx.Done():
-			return nil, nil
-		default:
-		}
-
-		if err := r.processCmd(r.cmdPtr); err != nil {
-			return nil, fmt.Errorf("failed to process [#cmd: %d]: %w", r.cmdPtr, err)
-		}
-
-	}
-}
-
-func validate(commands string) error {
-
-	loopCounter := 0
-
-	for iCmd, cmd := range commands {
-		switch cmd {
-		case CmdShiftRight, CmdShiftLeft, CmdPlus, CmdMinus, CmdOut, CmdIn:
-
-		case CmdStartLoop:
-			loopCounter++
-
-		case CmdEndLoop:
-			loopCounter--
-			if loopCounter < 0 {
-				return fmt.Errorf(`number ']' is greater then number of '[' [#cmd: %d]`, iCmd)
+		if !ok {
+			_, err := bf.commands.Read(cmdBuffer)
+			if errors.Is(err, io.EOF) {
+				return bf.data, nil
 			}
 
-		default:
-			return fmt.Errorf(`unknown [#cmd: %d]: '%c'`, iCmd, cmd)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read command: %w", err)
+			}
+
+			cmd = cmdBuffer[0]
 		}
-	}
 
-	if loopCounter != 0 {
-		return errors.New(`number '[' is not equal to number of ']'`)
-	}
+		if err := bf.execCmd(cmd); err != nil {
+			return nil, fmt.Errorf("failed to process [#cmd: %d]: %w", bf.cmdPtr, err)
+		}
 
-	return nil
+		bf.cmdPtr++
+	}
 }
 
-func (r *BfRunner) processCmd(iCmd int) error {
+func (bf *BfInterpeter[DataType]) execCmd(cmd byte) error {
 
-	cmd := r.commands[iCmd]
+	if bf.loopStack.Len() > 0 && bf.cmdCache != nil {
+		bf.cmdCache[bf.cmdPtr] = cmd
+	}
 
 	switch cmd {
 	case CmdShiftRight:
-		if r.dataPtr >= len(r.data)-1 {
+		if bf.dataPtr >= len(bf.data)-1 {
 			return fmt.Errorf("shift+ out of boundary")
 		}
-		r.dataPtr++
+		bf.dataPtr++
 
 	case CmdShiftLeft:
-		if r.dataPtr <= 0 {
+		if bf.dataPtr <= 0 {
 			return fmt.Errorf("shift- out of boundary")
 		}
-		r.dataPtr--
+		bf.dataPtr--
 
 	case CmdPlus:
-		r.data[r.dataPtr] += 1
+		bf.data[bf.dataPtr] += 1
 
 	case CmdMinus:
-		r.data[r.dataPtr] -= 1
+		bf.data[bf.dataPtr] -= 1
 
 	case CmdOut:
-		v := r.data[r.dataPtr]
-		if _, err := r.output.Write([]byte(fmt.Sprintf("%d\r\n", v))); err != nil {
+		v := bf.data[bf.dataPtr]
+		if _, err := bf.output.Write([]byte(fmt.Sprintf("%d\r\n", v))); err != nil {
 			return fmt.Errorf("failed to print value: %w", err)
 		}
 
 	case CmdIn:
-		rn, err := r.input.Read(fmt.Sprintf("enter value [#cmd: %d]", r.cmdPtr))
+		rn, err := bf.input.Read(fmt.Sprintf("enter value [#cmd: %d]", bf.cmdPtr))
 		if err != nil {
 			return fmt.Errorf("failed to read value: %w", err)
 		}
 
-		r.data[r.dataPtr] = DataItem(rn)
+		bf.data[bf.dataPtr] = DataType(rn)
 
 	case CmdStartLoop:
 
 		// what's on top of the stack?
-		loop := r.loopStack.Get()
+		loop := bf.loopStack.Get()
 
 		// is it a new loop?
-		if loop == nil || loop.start != r.cmdPtr {
-			loopEnd := findLoopEnd(r.cmdPtr, r.commands)
-			if loopEnd == -1 {
-				return fmt.Errorf("non-closed loop [#cmd: %d]", r.cmdPtr)
-			}
-
-			loop = &Loop{
-				start: r.cmdPtr,
-				end:   loopEnd,
-			}
-
-			r.loopStack.Push(*loop)
+		if loop == nil || *loop != bf.cmdPtr {
+			bf.loopStack.Push(bf.cmdPtr)
 		}
 
-		// should we exit this loop already?
-		if r.data[r.dataPtr] == 0 {
-			_ = r.loopStack.Pop()
-			r.cmdPtr = loop.end // r.cmdPtr will be incremented at the end of func
+		if bf.cmdCache == nil {
+			bf.cmdCache = make(CmdCache)
+			bf.cmdCache[bf.cmdPtr] = cmd
+		}
+
+		// should we stay in loop?
+		if bf.data[bf.dataPtr] != 0 {
+			break
+		}
+
+		_ = bf.loopStack.Pop()
+		bf.cmdPtr = bf.currentLoopEnd // bf.cmdPtr will be incremented
+
+		if bf.loopStack.Len() == 0 {
+			bf.cmdCache = nil
 		}
 
 	case CmdEndLoop:
-		loop := r.loopStack.Get()
+		loop := bf.loopStack.Get()
 
 		if loop == nil {
-			return fmt.Errorf("stack is empty on closing loop [#cmd: %d]", r.cmdPtr)
+			return fmt.Errorf("stack is empty on closing loop [#cmd: %d]", bf.cmdPtr)
 		}
 
-		r.cmdPtr = loop.start - 1 // r.cmdPtr will be incremented at the end of func
+		bf.currentLoopEnd = bf.cmdPtr
+		bf.cmdPtr = *loop - 1 // bf.cmdPtr will be incremented
 	}
-
-	r.cmdPtr++
 
 	return nil
-}
-
-func findLoopEnd(loopStart int, commands string) int {
-
-	loopCnt := 0
-
-	for i := loopStart; i < len(commands); i++ {
-
-		switch commands[i] {
-		case CmdStartLoop:
-			loopCnt++
-		case CmdEndLoop:
-			loopCnt--
-		}
-
-		if loopCnt == 0 {
-			return i
-		}
-	}
-
-	return -1
 }

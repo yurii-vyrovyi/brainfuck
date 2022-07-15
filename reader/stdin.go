@@ -39,21 +39,21 @@ func (r *StdInReader) Close() error {
 	return nil
 }
 
-func (r *StdInReader) Read(msg string) (rune, error) {
+func (r *StdInReader) Read(msg string) (byte, error) {
 	_, err := os.Stdin.Write([]byte(msg + ": "))
 	if err != nil {
 		return 0, fmt.Errorf("failed to print message: %w", err)
 	}
 
-	c, _, err := r.in.ReadRune()
+	b, err := r.in.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 
-	_, err = os.Stdin.Write([]byte(fmt.Sprintf("%c\r\n", c)))
+	_, err = os.Stdin.Write([]byte(fmt.Sprintf("%c\r\n", b)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to print input value: %w", err)
 	}
 
-	return c, nil
+	return b, nil
 }

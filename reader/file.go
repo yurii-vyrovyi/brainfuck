@@ -28,11 +28,11 @@ func (r *FileReader) Close() error {
 	return r.f.Close()
 }
 
-func (r *FileReader) Read(_ string) (rune, error) {
-	c, _, err := r.in.ReadRune()
+func (r *FileReader) Read(_ string) (byte, error) {
+	b, err := r.in.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 
-	return c, nil
+	return b, nil
 }
