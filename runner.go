@@ -10,7 +10,7 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-type BfInterpeter[DataType constraints.Signed] struct {
+type BfInterpreter[DataType constraints.Signed] struct {
 	data     []DataType
 	commands io.Reader
 	output   io.Writer
@@ -56,13 +56,13 @@ func New[DataType constraints.Signed](
 	commands io.Reader,
 	output io.Writer,
 	input InputReader,
-) *BfInterpeter[DataType] {
+) *BfInterpreter[DataType] {
 
 	if dataSize == 0 {
 		dataSize = DefaultDataSize
 	}
 
-	return &BfInterpeter[DataType]{
+	return &BfInterpreter[DataType]{
 		data:     make([]DataType, dataSize),
 		commands: commands,
 		output:   output,
@@ -70,7 +70,7 @@ func New[DataType constraints.Signed](
 	}
 }
 
-func (bf *BfInterpeter[DataType]) Run() ([]DataType, error) {
+func (bf *BfInterpreter[DataType]) Run() ([]DataType, error) {
 
 	bf.cmdPtr = 0
 	bf.dataPtr = 0
@@ -107,7 +107,7 @@ func (bf *BfInterpeter[DataType]) Run() ([]DataType, error) {
 	}
 }
 
-func (bf *BfInterpeter[DataType]) execCmd(cmd byte) error {
+func (bf *BfInterpreter[DataType]) execCmd(cmd byte) error {
 
 	if bf.loopStack.Len() > 0 && bf.cmdCache != nil {
 		bf.cmdCache[bf.cmdPtr] = cmd
