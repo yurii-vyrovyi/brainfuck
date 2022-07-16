@@ -1,4 +1,4 @@
-package bf_runner
+package brainfuck
 
 import (
 	"errors"
@@ -29,20 +29,19 @@ type BfInterpreter[DataType constraints.Signed] struct {
 type (
 	CmdType                             byte
 	CmdCache                            map[int]CmdType
-	OpFunc[DataType constraints.Signed] func(bf *BfInterpreter[DataType], cmd CmdType) error
+	OpFunc[DataType constraints.Signed] func(bf *BfInterpreter[DataType]) error
 )
 
-type (
-	InputReader interface {
-		Read(string) (CmdType, error)
-		Close() error
-	}
+//go:generate mockgen -source brainfuck.go -destination mock_brainfuck.go -package brainfuck  github.com/yurii-vyrovyi/brainfuck InputReader
+type InputReader interface {
+	Read(string) (CmdType, error)
+	Close() error
+}
 
-	OutputWriter[DataType constraints.Signed] interface {
-		Write(DataType) error
-		Close() error
-	}
-)
+type OutputWriter[DataType constraints.Signed] interface {
+	Write(DataType) error
+	Close() error
+}
 
 const (
 	DefaultDataSize = 4096
@@ -133,12 +132,21 @@ func (bf *BfInterpreter[DataType]) Run(commands io.Reader) ([]DataType, error) {
 		opFunc, ok := bf.opMap[cmd]
 		if ok {
 
-			if bf.loopStack.Len() > 0 && bf.cmdCache != nil {
-				bf.cmdCache[bf.CmdPtr] = cmd
+			// When the loop start we're starting to cache commands
+			// If the loop is nested we're keeping caching.
+			if bf.cmdCache == nil {
+				bf.cmdCache = make(CmdCache)
 			}
 
-			if err := opFunc(bf, cmd); err != nil {
+			bf.cmdCache[bf.CmdPtr] = cmd
+
+			if err := opFunc(bf); err != nil {
 				return nil, fmt.Errorf("failed to process [#cmd: %d]: %w", bf.CmdPtr, err)
+			}
+
+			// When we finish the topmost loop cache is not necessary anymore
+			if bf.loopStack.Len() == 0 {
+				bf.cmdCache = nil
 			}
 		}
 
@@ -146,7 +154,7 @@ func (bf *BfInterpreter[DataType]) Run(commands io.Reader) ([]DataType, error) {
 	}
 }
 
-func opShiftRight[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opShiftRight[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	if bf.DataPtr >= len(bf.Data)-1 {
 		return fmt.Errorf("shift+ moves out of boundary")
 	}
@@ -155,7 +163,7 @@ func opShiftRight[DataType constraints.Signed](bf *BfInterpreter[DataType], _ Cm
 	return nil
 }
 
-func opShiftLeft[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opShiftLeft[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	if bf.DataPtr <= 0 {
 		return fmt.Errorf("shift- moves out of boundary")
 	}
@@ -164,18 +172,18 @@ func opShiftLeft[DataType constraints.Signed](bf *BfInterpreter[DataType], _ Cmd
 	return nil
 }
 
-func opPlus[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opPlus[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	bf.Data[bf.DataPtr] += 1
 
 	return nil
 }
 
-func opMinus[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opMinus[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	bf.Data[bf.DataPtr] -= 1
 	return nil
 }
 
-func opOut[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opOut[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	v := bf.Data[bf.DataPtr]
 	if err := bf.output.Write(v); err != nil {
 		return fmt.Errorf("failed to write value: %w", err)
@@ -184,7 +192,7 @@ func opOut[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) 
 	return nil
 }
 
-func opIn[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opIn[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	rn, err := bf.input.Read(fmt.Sprintf("enter value [#cmd: %d]", bf.CmdPtr))
 	if err != nil {
 		return fmt.Errorf("failed to read value: %w", err)
@@ -195,18 +203,14 @@ func opIn[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) e
 	return nil
 }
 
-func opStartLoop[DataType constraints.Signed](bf *BfInterpreter[DataType], cmd CmdType) error {
+func opStartLoop[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
+
 	// what's on top of the stack?
 	loop := bf.loopStack.Get()
 
 	// is it a new loop?
 	if loop == nil || *loop != bf.CmdPtr {
 		bf.loopStack.Push(bf.CmdPtr)
-	}
-
-	if bf.cmdCache == nil {
-		bf.cmdCache = make(CmdCache)
-		bf.cmdCache[bf.CmdPtr] = cmd
 	}
 
 	// should we stay in loop?
@@ -224,7 +228,7 @@ func opStartLoop[DataType constraints.Signed](bf *BfInterpreter[DataType], cmd C
 	return nil
 }
 
-func opEndLoop[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
+func opEndLoop[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 	loop := bf.loopStack.Get()
 
 	if loop == nil {
