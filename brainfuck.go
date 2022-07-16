@@ -16,7 +16,7 @@ type BfInterpreter[DataType constraints.Signed] struct {
 	DataPtr int
 
 	commands io.Reader
-	output   io.Writer
+	output   OutputWriter[DataType]
 	input    InputReader
 
 	loopStack stack.Stack[int]
@@ -32,10 +32,17 @@ type (
 	OpFunc[DataType constraints.Signed] func(bf *BfInterpreter[DataType], cmd CmdType) error
 )
 
-type InputReader interface {
-	Read(string) (CmdType, error)
-	Close() error
-}
+type (
+	InputReader interface {
+		Read(string) (CmdType, error)
+		Close() error
+	}
+
+	OutputWriter[DataType constraints.Signed] interface {
+		Write(DataType) error
+		Close() error
+	}
+)
 
 const (
 	DefaultDataSize = 4096
@@ -55,7 +62,7 @@ const (
 func New[DataType constraints.Signed](
 	dataSize int,
 	commands io.Reader,
-	output io.Writer,
+	output OutputWriter[DataType],
 	input InputReader,
 ) *BfInterpreter[DataType] {
 
@@ -135,7 +142,7 @@ func (bf *BfInterpreter[DataType]) Run() ([]DataType, error) {
 
 func opShiftRight[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
 	if bf.DataPtr >= len(bf.Data)-1 {
-		return fmt.Errorf("shift+ out of boundary")
+		return fmt.Errorf("shift+ moves out of boundary")
 	}
 	bf.DataPtr++
 
@@ -144,7 +151,7 @@ func opShiftRight[DataType constraints.Signed](bf *BfInterpreter[DataType], _ Cm
 
 func opShiftLeft[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
 	if bf.DataPtr <= 0 {
-		return fmt.Errorf("shift- out of boundary")
+		return fmt.Errorf("shift- moves out of boundary")
 	}
 	bf.DataPtr--
 
@@ -164,8 +171,8 @@ func opMinus[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType
 
 func opOut[DataType constraints.Signed](bf *BfInterpreter[DataType], _ CmdType) error {
 	v := bf.Data[bf.DataPtr]
-	if _, err := bf.output.Write([]byte(fmt.Sprintf("%d\r\n", v))); err != nil {
-		return fmt.Errorf("failed to print value: %w", err)
+	if err := bf.output.Write(v); err != nil {
+		return fmt.Errorf("failed to write value: %w", err)
 	}
 
 	return nil
