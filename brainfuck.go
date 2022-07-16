@@ -61,9 +61,8 @@ const (
 
 func New[DataType constraints.Signed](
 	dataSize int,
-	commands io.Reader,
-	output OutputWriter[DataType],
 	input InputReader,
+	output OutputWriter[DataType],
 ) *BfInterpreter[DataType] {
 
 	if dataSize == 0 {
@@ -82,21 +81,28 @@ func New[DataType constraints.Signed](
 	}
 
 	return &BfInterpreter[DataType]{
-		Data:     make([]DataType, dataSize),
-		commands: commands,
-		output:   output,
-		input:    input,
-		opMap:    opMap,
+		Data:   make([]DataType, dataSize),
+		output: output,
+		input:  input,
+		opMap:  opMap,
 	}
 }
 
 func (bf *BfInterpreter[DataType]) WithCmd(cmd CmdType, opFunc OpFunc[DataType]) *BfInterpreter[DataType] {
-	bf.opMap[cmd] = opFunc
+
+	// Overloading loop operators is forbidden because these commands change interpreter state aside of
+	// data and pointers (loop stack, command cache etc.).
+	// Overloading these commands may lead to memory leaks and undefined behaviour that will be hard to detect.
+	if cmd != CmdStartLoop && cmd != CmdEndLoop {
+		bf.opMap[cmd] = opFunc
+	}
+
 	return bf
 }
 
-func (bf *BfInterpreter[DataType]) Run() ([]DataType, error) {
+func (bf *BfInterpreter[DataType]) Run(commands io.Reader) ([]DataType, error) {
 
+	bf.commands = commands
 	bf.CmdPtr = 0
 	bf.DataPtr = 0
 
