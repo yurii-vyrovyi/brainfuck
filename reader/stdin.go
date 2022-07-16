@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	bf "github.com/yurii-vyrovyi/brainfuck"
+
 	"golang.org/x/term"
 )
 
@@ -39,7 +41,7 @@ func (r *StdInReader) Close() error {
 	return nil
 }
 
-func (r *StdInReader) Read(msg string) (byte, error) {
+func (r *StdInReader) Read(msg string) (bf.CmdType, error) {
 	_, err := os.Stdin.Write([]byte(msg + ": "))
 	if err != nil {
 		return 0, fmt.Errorf("failed to print message: %w", err)
@@ -55,5 +57,5 @@ func (r *StdInReader) Read(msg string) (byte, error) {
 		return 0, fmt.Errorf("failed to print input value: %w", err)
 	}
 
-	return b, nil
+	return bf.CmdType(b), nil
 }

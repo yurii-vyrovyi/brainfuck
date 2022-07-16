@@ -2,6 +2,7 @@ package reader
 
 import (
 	"bufio"
+	bf "github.com/yurii-vyrovyi/brainfuck"
 	"os"
 )
 
@@ -28,11 +29,11 @@ func (r *FileReader) Close() error {
 	return r.f.Close()
 }
 
-func (r *FileReader) Read(_ string) (byte, error) {
+func (r *FileReader) Read(_ string) (bf.CmdType, error) {
 	b, err := r.in.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 
-	return b, nil
+	return bf.CmdType(b), nil
 }
