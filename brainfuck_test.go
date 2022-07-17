@@ -176,6 +176,24 @@ func TestBfInterpreter_Operations(t *testing.T) {
 			extDataPrt: 1,
 			expOutput:  nil,
 		},
+
+		"CustomOp": {
+			opFunc: func(bf *BfInterpreter[int32]) error {
+				bf.Data[bf.DataPtr] = bf.Data[bf.DataPtr] * bf.Data[bf.DataPtr]
+				return nil
+			},
+
+			srcData:     []int32{0, 3, 0, 0, 0},
+			srcDataPtr:  1,
+			srcInput:    nil,
+			srcInError:  nil,
+			srcOutError: nil,
+
+			expErr:     false,
+			expData:    []int32{0, 9, 0, 0, 0},
+			extDataPrt: 1,
+			expOutput:  nil,
+		},
 	}
 
 	//nolint:paralleltest
@@ -295,6 +313,19 @@ func TestBfInterpreter_StartLoop(t *testing.T) {
 			extDataPrt:   2,
 			expCmdPtr:    4, // cmdPtr is moved to the END of the loop
 			expLoopStack: stack.BuildStack[CmdPtrType](1),
+		},
+
+		"Exit topmost loop": {
+			srcData:      []int32{0, 1, 0, 0},
+			srcDataPtr:   2,
+			srcCmdPtr:    1,
+			srcLoopStack: stack.BuildStack[CmdPtrType](1),
+			srLoopEnd:    4,
+
+			expData:      []int32{0, 1, 0, 0},
+			extDataPrt:   2,
+			expCmdPtr:    4, // cmdPtr is moved to the END of the loop
+			expLoopStack: stack.BuildStack[CmdPtrType](),
 		},
 	}
 
