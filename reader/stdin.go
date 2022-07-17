@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"os"
 
-	bf "github.com/yurii-vyrovyi/brainfuck"
-
+	"golang.org/x/exp/constraints"
 	"golang.org/x/term"
 )
 
-type StdInReader struct {
+type StdInReader[DataType constraints.Signed] struct {
 	initialState *term.State
 	in           *bufio.Reader
 }
 
-func BuildStdInReader() (*StdInReader, error) {
+func BuildStdInReader[DataType constraints.Signed]() (*StdInReader[DataType], error) {
 	state, err := term.MakeRaw(0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set stdin to raw: %w", err)
@@ -23,14 +22,14 @@ func BuildStdInReader() (*StdInReader, error) {
 
 	in := bufio.NewReader(os.Stdin)
 
-	return &StdInReader{
+	return &StdInReader[DataType]{
 		initialState: state,
 		in:           in,
 	}, nil
 }
 
-func (r *StdInReader) Close() error {
-	if _, err := os.Stdin.Write([]byte("\r")); err != nil {
+func (r *StdInReader[DataType]) Close() error {
+	if _, err := os.Stdin.Write([]byte{'\r'}); err != nil {
 		return fmt.Errorf(`failed to print \r: %w`, err)
 	}
 
@@ -41,13 +40,13 @@ func (r *StdInReader) Close() error {
 	return nil
 }
 
-func (r *StdInReader) Read(msg string) (bf.CmdType, error) {
+func (r *StdInReader[DataType]) Read(msg string) (DataType, error) {
 	_, err := os.Stdin.Write([]byte(msg + ": "))
 	if err != nil {
 		return 0, fmt.Errorf("failed to print message: %w", err)
 	}
 
-	b, err := r.in.ReadByte()
+	b, _, err := r.in.ReadRune()
 	if err != nil {
 		return 0, err
 	}
@@ -57,5 +56,5 @@ func (r *StdInReader) Read(msg string) (bf.CmdType, error) {
 		return 0, fmt.Errorf("failed to print input value: %w", err)
 	}
 
-	return bf.CmdType(b), nil
+	return DataType(b), nil
 }

@@ -2,16 +2,16 @@ package reader
 
 import (
 	"bufio"
-	bf "github.com/yurii-vyrovyi/brainfuck"
+	"golang.org/x/exp/constraints"
 	"os"
 )
 
-type FileReader struct {
+type FileReader[DataType constraints.Signed] struct {
 	f  *os.File
 	in *bufio.Reader
 }
 
-func BuildFileReader(fileName string) (*FileReader, error) {
+func BuildFileReader[DataType constraints.Signed](fileName string) (*FileReader[DataType], error) {
 	f, err := os.Open(fileName)
 	if err != nil {
 		return nil, err
@@ -19,21 +19,21 @@ func BuildFileReader(fileName string) (*FileReader, error) {
 
 	in := bufio.NewReader(f)
 
-	return &FileReader{
+	return &FileReader[DataType]{
 		f:  f,
 		in: in,
 	}, nil
 }
 
-func (r *FileReader) Close() error {
+func (r *FileReader[DataType]) Close() error {
 	return r.f.Close()
 }
 
-func (r *FileReader) Read(_ string) (bf.CmdType, error) {
+func (r *FileReader[DataType]) Read(_ string) (DataType, error) {
 	b, err := r.in.ReadByte()
 	if err != nil {
 		return 0, err
 	}
 
-	return bf.CmdType(b), nil
+	return DataType(b), nil
 }

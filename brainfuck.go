@@ -12,36 +12,40 @@ import (
 
 type BfInterpreter[DataType constraints.Signed] struct {
 	Data    []DataType
-	CmdPtr  int
-	DataPtr int
+	CmdPtr  CmdPtrType
+	DataPtr DataPtrType
 
 	commands io.Reader
+	input    InputReader[DataType]
 	output   OutputWriter[DataType]
-	input    InputReader
 
-	loopStack stack.Stack[int]
+	loopStack *stack.Stack[CmdPtrType]
 	cmdCache  CmdCache
 	opMap     map[CmdType]OpFunc[DataType]
 
-	currentLoopEnd int
+	currentLoopEnd CmdPtrType
 }
 
 type (
-	CmdType                             byte
-	CmdCache                            map[int]CmdType
+	CmdType     byte
+	CmdPtrType  int
+	DataPtrType int
+
+	CmdCache                            map[CmdPtrType]CmdType
 	OpFunc[DataType constraints.Signed] func(bf *BfInterpreter[DataType]) error
 )
 
-//go:generate mockgen -source brainfuck.go -destination mock_brainfuck.go -package brainfuck  github.com/yurii-vyrovyi/brainfuck InputReader
-type InputReader interface {
-	Read(string) (CmdType, error)
-	Close() error
-}
+type (
+	InputReader[DataType constraints.Signed] interface {
+		Read(string) (DataType, error)
+		Close() error
+	}
 
-type OutputWriter[DataType constraints.Signed] interface {
-	Write(DataType) error
-	Close() error
-}
+	OutputWriter[DataType constraints.Signed] interface {
+		Write(DataType) error
+		Close() error
+	}
+)
 
 const (
 	DefaultDataSize = 4096
@@ -60,7 +64,7 @@ const (
 
 func New[DataType constraints.Signed](
 	dataSize int,
-	input InputReader,
+	input InputReader[DataType],
 	output OutputWriter[DataType],
 ) *BfInterpreter[DataType] {
 
@@ -80,10 +84,11 @@ func New[DataType constraints.Signed](
 	}
 
 	return &BfInterpreter[DataType]{
-		Data:   make([]DataType, dataSize),
-		output: output,
-		input:  input,
-		opMap:  opMap,
+		Data:      make([]DataType, dataSize),
+		output:    output,
+		input:     input,
+		opMap:     opMap,
+		loopStack: stack.BuildStack[CmdPtrType](),
 	}
 }
 
@@ -132,7 +137,7 @@ func (bf *BfInterpreter[DataType]) Run(commands io.Reader) ([]DataType, error) {
 		opFunc, ok := bf.opMap[cmd]
 		if ok {
 
-			// When the loop start we're starting to cache commands
+			// When the loop starts we're starting to cache commands
 			// If the loop is nested we're keeping caching.
 			if bf.cmdCache == nil {
 				bf.cmdCache = make(CmdCache)
@@ -144,7 +149,7 @@ func (bf *BfInterpreter[DataType]) Run(commands io.Reader) ([]DataType, error) {
 				return nil, fmt.Errorf("failed to process [#cmd: %d]: %w", bf.CmdPtr, err)
 			}
 
-			// When we finish the topmost loop cache is not necessary anymore
+			// Cache is not necessary anymore when we finish the topmost loop
 			if bf.loopStack.Len() == 0 {
 				bf.cmdCache = nil
 			}
@@ -155,7 +160,7 @@ func (bf *BfInterpreter[DataType]) Run(commands io.Reader) ([]DataType, error) {
 }
 
 func opShiftRight[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
-	if bf.DataPtr >= len(bf.Data)-1 {
+	if bf.DataPtr >= DataPtrType(len(bf.Data)-1) {
 		return fmt.Errorf("shift+ moves out of boundary")
 	}
 	bf.DataPtr++
@@ -198,7 +203,7 @@ func opIn[DataType constraints.Signed](bf *BfInterpreter[DataType]) error {
 		return fmt.Errorf("failed to read value: %w", err)
 	}
 
-	bf.Data[bf.DataPtr] = DataType(rn)
+	bf.Data[bf.DataPtr] = rn
 
 	return nil
 }
