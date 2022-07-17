@@ -221,10 +221,6 @@ func opStartLoop[DataType constraints.Signed](bf *BfInterpreter[DataType]) error
 	_ = bf.loopStack.Pop()
 	bf.CmdPtr = bf.currentLoopEnd // bf.CmdPtr will be incremented
 
-	if bf.loopStack.Len() == 0 {
-		bf.cmdCache = nil
-	}
-
 	return nil
 }
 
