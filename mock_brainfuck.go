@@ -48,10 +48,10 @@ func (mr *MockTestInputReaderMockRecorder) Close() *gomock.Call {
 }
 
 // Read mocks base method.
-func (m *MockTestInputReader) Read(arg0 string) (int32, error) {
+func (m *MockTestInputReader) Read(arg0 string) (TestDataType, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Read", arg0)
-	ret0, _ := ret[0].(int32)
+	ret0, _ := ret[0].(TestDataType)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -100,7 +100,7 @@ func (mr *MockTestOutputWriterMockRecorder) Close() *gomock.Call {
 }
 
 // Write mocks base method.
-func (m *MockTestOutputWriter) Write(arg0 int32) error {
+func (m *MockTestOutputWriter) Write(arg0 TestDataType) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Write", arg0)
 	ret0, _ := ret[0].(error)
