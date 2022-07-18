@@ -3,8 +3,9 @@ package brainfuck
 import (
 	"bytes"
 	"errors"
-	"github.com/yurii-vyrovyi/brainfuck/stack"
 	"testing"
+
+	"github.com/yurii-vyrovyi/brainfuck/stack"
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/go-cmp/cmp"
@@ -12,6 +13,10 @@ import (
 )
 
 //go:generate mockgen -source brainfuck_test.go -destination mock_brainfuck.go -package brainfuck
+
+// These interfaces are necessary to generate InputReader and OutputWrite mocks.
+// While original interfaces InputReader and OutputWrite use generics TestXXX ones use TestDataType as a data type.
+// This type is used in all tests.
 type (
 	TestDataType int32
 
