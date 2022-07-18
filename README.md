@@ -21,7 +21,7 @@ Here are points that explain an interpreter implementation:
    Interpreter ignores unknown commands, hence '\r' and '\n' don't affect code execution. While user can write s
    Again, while there's no some specific requirement it seems to be reasonable to keep implementation simple.
 
-4. Commands and Data pointers.
+4. **Commands and Data pointers.** 
    CmdPtrType and DataPtrType are int. It could be changed if we have some requirement for the size of memory or
    an amount of Brainfuck commands that we're assuming to process.
 
